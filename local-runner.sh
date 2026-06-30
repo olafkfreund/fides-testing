@@ -35,7 +35,7 @@ aws ecr get-login-password --region eu-west-2 --profile Synechron | docker login
 docker build -t 796973489124.dkr.ecr.eu-west-2.amazonaws.com/fides-testing-service:latest .
 docker push 796973489124.dkr.ecr.eu-west-2.amazonaws.com/fides-testing-service:latest
 
-IMAGE_DIGEST=$(docker inspect --format='{{index .Id 0}}' 796973489124.dkr.ecr.eu-west-2.amazonaws.com/fides-testing-service:latest)
+IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' 796973489124.dkr.ecr.eu-west-2.amazonaws.com/fides-testing-service:latest | cut -d'@' -f2 | sed 's/sha256://')
 echo "Captured Image SHA256: $IMAGE_DIGEST"
 
 # 3. Report Artifact
@@ -93,9 +93,21 @@ kubectl apply -f kubernetes/deployment.yaml -n dev
 kubectl apply -f kubernetes/deployment.yaml -n uat
 kubectl apply -f kubernetes/deployment.yaml -n prod
 
+echo "Step 6.5: Restarting deployments to pull new image..."
+kubectl rollout restart deployment/fides-testing-service -n dev
+kubectl rollout restart deployment/fides-testing-service -n uat
+kubectl rollout restart deployment/fides-testing-service -n prod
+
+echo "Waiting for rollout to complete..."
+kubectl rollout status deployment/fides-testing-service -n dev --timeout=60s
+kubectl rollout status deployment/fides-testing-service -n uat --timeout=60s
+kubectl rollout status deployment/fides-testing-service -n prod --timeout=60s
+
 # 9. Update Runtime State snapshot
 echo "Step 7: Capturing environment runtime snapshot..."
-$CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f021
+$CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0d1
+$CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0a1
+$CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0e1
 
 # Clean up temp files
 rm -f junit-summary.json scan-summary.json secret-summary.json
