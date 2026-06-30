@@ -5,7 +5,7 @@ on:
     branches: [ main ]
 
 env:
-  FIDES_SERVER_URL: "http://localhost:8191" # Update to your public fides endpoint in cloud
+  FIDES_SERVER_URL: "https://fides.13.134.88.9.nip.io" # Update to your public fides endpoint in cloud
   FIDES_API_TOKEN: ${{ secrets.FIDES_API_TOKEN }}
   FIDES_ENCRYPTION_KEY: ${{ secrets.FIDES_ENCRYPTION_KEY }}
   ORG_ID: "5d57b8c7-4328-4e1b-93df-4161b9a918a3"

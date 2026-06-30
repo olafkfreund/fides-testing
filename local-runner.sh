@@ -2,7 +2,7 @@
 set -e
 
 # Config
-export FIDES_SERVER_URL="http://localhost:8191"
+export FIDES_SERVER_URL="https://fides.13.134.88.9.nip.io"
 export FIDES_ENCRYPTION_KEY="passphrase-secret-passphrase-secret"
 export FIDES_API_TOKEN="passphrase-secret-passphrase-secret-api-token"
 export ORG_ID="5d57b8c7-4328-4e1b-93df-4161b9a918a3"
