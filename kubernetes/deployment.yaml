@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
       - name: app
-        image: fides-testing-service:latest
-        imagePullPolicy: IfNotPresent
+        image: 796973489124.dkr.ecr.eu-west-2.amazonaws.com/fides-testing-service:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
         readinessProbe:
