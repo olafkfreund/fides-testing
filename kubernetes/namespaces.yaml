@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: dev
+  name: fides-dev
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: uat
+  name: fides-uat
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: prod
+  name: fides-prod

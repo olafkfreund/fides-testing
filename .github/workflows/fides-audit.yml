@@ -70,10 +70,10 @@ jobs:
       - name: Deploy to K8s dev, uat, prod
         run: |
           kubectl apply -f kubernetes/namespaces.yaml
-          kubectl apply -f kubernetes/deployment.yaml -n dev
-          kubectl apply -f kubernetes/deployment.yaml -n uat
-          kubectl apply -f kubernetes/deployment.yaml -n prod
+          kubectl apply -f kubernetes/deployment.yaml -n fides-dev
+          kubectl apply -f kubernetes/deployment.yaml -n fides-uat
+          kubectl apply -f kubernetes/deployment.yaml -n fides-prod
 
       - name: Update Runtime State snapshot
         run: |
-          fides snapshot k8s "EKS Cluster" --namespace "prod"
+          fides snapshot k8s "EKS Cluster" --namespace "fides-prod"
