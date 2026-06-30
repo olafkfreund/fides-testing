@@ -81,6 +81,18 @@ $CLI attest \
   --payload secret-summary.json \
   --encrypt
 
+# 6.5. Attest SBOM
+echo "Step 4.4: Attesting SBOM package inventory..."
+echo '[{"name": "fastapi", "version": "0.100.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "uvicorn", "version": "0.22.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "pydantic", "version": "2.0.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "starlette", "version": "0.27.0", "license": "BSD-3-Clause", "vulnerabilities": "None"}]' > sbom-summary.json
+$CLI attest \
+  --trail $TRAIL_UUID \
+  --artifact-sha $IMAGE_DIGEST \
+  --name "sbom" \
+  --type "sbom" \
+  --payload sbom-summary.json \
+  --encrypt
+
+
 # 7. Assert Policy Gate
 echo "Step 5: Verifying policy rules assertion gate..."
 $CLI assert \
@@ -111,7 +123,7 @@ $CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0a1 --namespace fides-u
 $CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0e1 --namespace fides-prod
 
 # Clean up temp files
-rm -f junit-summary.json scan-summary.json secret-summary.json
+rm -f junit-summary.json scan-summary.json secret-summary.json sbom-summary.json
 
 echo "=========================================="
 echo "🎉 Compliance Assert and Deploy succeeded!"

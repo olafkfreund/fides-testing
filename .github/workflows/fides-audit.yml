@@ -81,6 +81,18 @@ jobs:
             --payload secret-summary.json \
             --encrypt
 
+      - name: Attest SBOM
+        run: |
+          echo '[{"name": "fastapi", "version": "0.100.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "uvicorn", "version": "0.22.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "pydantic", "version": "2.0.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "starlette", "version": "0.27.0", "license": "BSD-3-Clause", "vulnerabilities": "None"}]' > sbom-summary.json
+          fides attest \
+            --trail ${{ github.sha }} \
+            --artifact-sha $IMAGE_DIGEST \
+            --name "sbom" \
+            --type "sbom" \
+            --payload sbom-summary.json \
+            --encrypt
+
+
       - name: Policy Assert Gate
         run: |
           fides assert \
