@@ -6,10 +6,11 @@ on:
 
 env:
   FIDES_SERVER_URL: "https://fides.13.134.88.9.nip.io" # Update to your public fides endpoint in cloud
-  FIDES_API_TOKEN: ${{ secrets.FIDES_API_TOKEN }}
+  FIDES_API_TOKEN: ${{ secrets.FIDES_API_TOKEN }}       # a static token OR a service-account key (fides_<prefix>_<secret>)
   FIDES_ENCRYPTION_KEY: ${{ secrets.FIDES_ENCRYPTION_KEY }}
   ORG_ID: "5d57b8c7-4328-4e1b-93df-4161b9a918a3"
   FLOW_ID: "f83b3e8c-8dc7-4a0b-ae95-716d1ba1f122"
+  ENV_ID: "9f3c7ea1-420a-4288-ae31-716d1ba1f0e1"        # the target (prod) environment
 
 jobs:
   build-scan-deploy:
@@ -37,68 +38,48 @@ jobs:
         run: |
           docker build -t fides-testing-service:${{ github.sha }} .
           DIGEST=$(docker inspect --format='{{index .Id}}' fides-testing-service:${{ github.sha }})
-          echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
+          echo "IMAGE_DIGEST=${DIGEST#sha256:}" >> $GITHUB_ENV
 
       - name: Register Artifact
         run: |
           fides artifact report \
-            --org $ORG_ID \
-            --trail ${{ github.sha }} \
-            --sha256 $IMAGE_DIGEST \
-            --name "fides-testing-service" \
-            --type "docker"
+            --org $ORG_ID --trail ${{ github.sha }} \
+            --sha256 $IMAGE_DIGEST --name "fides-testing-service" --type "docker"
 
-      - name: Attest Unit Tests
+      # --- Evidence via built-in parsers (real report formats) ---
+      - name: Attest Unit Tests (JUnit)
         run: |
-          echo "{\"tests\": 10, \"failures\": 0, \"errors\": 0}" > junit-summary.json
-          fides attest \
-            --trail ${{ github.sha }} \
-            --artifact-sha $IMAGE_DIGEST \
-            --name "unit-tests" \
-            --type "junit" \
-            --payload junit-summary.json \
-            --encrypt
+          # produce a real junit.xml from your test runner, e.g. pytest --junitxml=junit.xml
+          cat > junit.xml <<'XML'
+          <testsuites><testsuite name="app"><testcase name="health"/><testcase name="api"/></testsuite></testsuites>
+          XML
+          fides attest junit --trail ${{ github.sha }} --artifact-sha $IMAGE_DIGEST --file junit.xml
 
-      - name: Attest Snyk Scan
+      - name: Attest Vulnerability Scan (Trivy)
         run: |
-          echo "{\"vulnerabilities\": {\"critical\": 0}}" > scan-summary.json
-          fides attest \
-            --trail ${{ github.sha }} \
-            --artifact-sha $IMAGE_DIGEST \
-            --name "snyk-scan" \
-            --type "vulnerability-scan" \
-            --payload scan-summary.json \
-            --encrypt
+          # trivy image -f json -o trivy.json fides-testing-service:${{ github.sha }}
+          echo '{"Results":[{"Vulnerabilities":[]}]}' > trivy.json
+          fides attest trivy --trail ${{ github.sha }} --artifact-sha $IMAGE_DIGEST --file trivy.json
 
-      - name: Attest Secret Scan
+      - name: Attest SBOM (generic)
         run: |
-          echo "{\"leaks\": 0}" > secret-summary.json
-          fides attest \
-            --trail ${{ github.sha }} \
-            --artifact-sha $IMAGE_DIGEST \
-            --name "secret-scan" \
-            --type "secret-scan" \
-            --payload secret-summary.json \
-            --encrypt
+          echo '{"components":[{"name":"fastapi","license":"MIT"}]}' > sbom.json
+          fides attest --trail ${{ github.sha }} --artifact-sha $IMAGE_DIGEST \
+            --name "sbom" --type "sbom" --payload sbom.json --encrypt
 
-      - name: Attest SBOM
+      # --- Gates: tamper-evidence + policy + approval (each exits non-zero on failure) ---
+      - name: Verify tamper-evidence chain
+        run: fides verify-chain --trail ${{ github.sha }}
+
+      - name: Policy gate
+        run: fides assert --sha256 $IMAGE_DIGEST --policy "production-release-rules"
+
+      - name: Approve artifact for the environment
         run: |
-          echo '[{"name": "fastapi", "version": "0.100.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "uvicorn", "version": "0.22.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "pydantic", "version": "2.0.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "starlette", "version": "0.27.0", "license": "BSD-3-Clause", "vulnerabilities": "None"}]' > sbom-summary.json
-          fides attest \
-            --trail ${{ github.sha }} \
-            --artifact-sha $IMAGE_DIGEST \
-            --name "sbom" \
-            --type "sbom" \
-            --payload sbom-summary.json \
-            --encrypt
+          fides allowlist add --env $ENV_ID --sha $IMAGE_DIGEST --reason "CI gate passed for ${{ github.sha }}"
+          fides allowlist check --env $ENV_ID --sha $IMAGE_DIGEST
 
-
-      - name: Policy Assert Gate
-        run: |
-          fides assert \
-            --sha256 $IMAGE_DIGEST \
-            --policy "production-release-rules"
-
+      # --- Deploy ---
       - name: Deploy to K8s dev, uat, prod
         run: |
           kubectl apply -f kubernetes/namespaces.yaml
@@ -107,5 +88,14 @@ jobs:
           kubectl apply -f kubernetes/deployment.yaml -n fides-prod
 
       - name: Update Runtime State snapshot
-        run: |
-          fides snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0e1 --namespace "fides-prod"
+        run: fides snapshot k8s --env $ENV_ID --namespace "fides-prod"
+
+      # --- Evidence artifact for auditors ---
+      - name: Download audit package
+        run: fides audit --trail ${{ github.sha }} --output trail-audit.zip
+
+      - name: Upload audit package
+        uses: actions/upload-artifact@v4
+        with:
+          name: fides-audit-${{ github.sha }}
+          path: trail-audit.zip
