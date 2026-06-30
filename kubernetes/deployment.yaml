@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fides-testing-service
+  labels:
+    app: fides-testing-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fides-testing-service
+  template:
+    metadata:
+      labels:
+        app: fides-testing-service
+    spec:
+      containers:
+      - name: app
+        image: fides-testing-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fides-testing-service
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: fides-testing-service
+  type: ClusterIP

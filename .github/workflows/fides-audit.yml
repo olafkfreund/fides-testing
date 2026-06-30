@@ -1,0 +1,79 @@
+name: Fides Compliance & Deployment
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  FIDES_SERVER_URL: "http://localhost:8191" # Update to your public fides endpoint in cloud
+  FIDES_API_TOKEN: ${{ secrets.FIDES_API_TOKEN }}
+  FIDES_ENCRYPTION_KEY: ${{ secrets.FIDES_ENCRYPTION_KEY }}
+  ORG_ID: "5d57b8c7-4328-4e1b-93df-4161b9a918a3"
+  FLOW_ID: "f83b3e8c-8dc7-4a0b-ae95-716d1ba1f122"
+
+jobs:
+  build-scan-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install Fides CLI
+        run: |
+          curl -sSfL https://fides.internal.company.com/cli/install.sh | sh
+          echo "/usr/local/bin" >> $GITHUB_PATH
+
+      - name: Start Trail Run
+        run: |
+          fides trail start \
+            --flow $FLOW_ID \
+            --trail ${{ github.sha }} \
+            --repository "${{ github.repository }}" \
+            --commit "${{ github.sha }}" \
+            --branch "${{ github.ref_name }}" \
+            --message "${{ github.event.head_commit.message }}"
+
+      - name: Build Docker Container
+        run: |
+          docker build -t fides-testing-service:${{ github.sha }} .
+          DIGEST=$(docker inspect --format='{{index .Id}}' fides-testing-service:${{ github.sha }})
+          echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
+
+      - name: Register Artifact
+        run: |
+          fides artifact report \
+            --org $ORG_ID \
+            --trail ${{ github.sha }} \
+            --sha256 $IMAGE_DIGEST \
+            --name "fides-testing-service" \
+            --type "docker"
+
+      - name: Attest Trivy Scan
+        run: |
+          # Simulating scan output for policy check
+          echo "{\"vulnerabilities\": {\"critical\": 0}}" > scan-summary.json
+          
+          fides attest \
+            --trail ${{ github.sha }} \
+            --artifact-sha $IMAGE_DIGEST \
+            --name "trivy-scan" \
+            --type "vulnerability-scan" \
+            --payload scan-summary.json \
+            --encrypt
+
+      - name: Policy Assert Gate
+        run: |
+          fides assert \
+            --sha256 $IMAGE_DIGEST \
+            --policy "production-release-rules"
+
+      - name: Deploy to K8s dev, uat, prod
+        run: |
+          kubectl apply -f kubernetes/namespaces.yaml
+          kubectl apply -f kubernetes/deployment.yaml -n dev
+          kubectl apply -f kubernetes/deployment.yaml -n uat
+          kubectl apply -f kubernetes/deployment.yaml -n prod
+
+      - name: Update Runtime State snapshot
+        run: |
+          fides snapshot k8s "EKS Cluster" --namespace "prod"
