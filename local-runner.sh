@@ -66,7 +66,7 @@ $CLI attest \
   --trail $TRAIL_UUID \
   --artifact-sha $IMAGE_DIGEST \
   --name "snyk-scan" \
-  --type "snyk-scan" \
+  --type "vulnerability-scan" \
   --payload scan-summary.json \
   --encrypt
 
