@@ -2,8 +2,9 @@
 set -e
 
 # Config
-export FIDES_SERVER_URL="http://localhost:8191"
+export FIDES_SERVER_URL="https://fides.13.134.88.9.nip.io"
 export FIDES_ENCRYPTION_KEY="passphrase-secret-passphrase-secret"
+export FIDES_API_TOKEN="passphrase-secret-passphrase-secret-api-token"
 export ORG_ID="5d57b8c7-4328-4e1b-93df-4161b9a918a3"
 export FLOW_ID="f83b3e8c-8dc7-4a0b-ae95-716d1ba1f122"
 export COMMIT_SHA=$(git rev-parse HEAD 2>/dev/null || echo "mock-commit-sha-999")
@@ -65,7 +66,7 @@ $CLI attest \
   --trail $TRAIL_UUID \
   --artifact-sha $IMAGE_DIGEST \
   --name "snyk-scan" \
-  --type "snyk-scan" \
+  --type "vulnerability-scan" \
   --payload scan-summary.json \
   --encrypt
 
@@ -80,6 +81,18 @@ $CLI attest \
   --payload secret-summary.json \
   --encrypt
 
+# 6.5. Attest SBOM
+echo "Step 4.4: Attesting SBOM package inventory..."
+echo '[{"name": "fastapi", "version": "0.100.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "uvicorn", "version": "0.22.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "pydantic", "version": "2.0.0", "license": "MIT", "vulnerabilities": "None"}, {"name": "starlette", "version": "0.27.0", "license": "BSD-3-Clause", "vulnerabilities": "None"}]' > sbom-summary.json
+$CLI attest \
+  --trail $TRAIL_UUID \
+  --artifact-sha $IMAGE_DIGEST \
+  --name "sbom" \
+  --type "sbom" \
+  --payload sbom-summary.json \
+  --encrypt
+
+
 # 7. Assert Policy Gate
 echo "Step 5: Verifying policy rules assertion gate..."
 $CLI assert \
@@ -89,28 +102,28 @@ $CLI assert \
 # 8. Apply K8s namespaces and deploy application
 echo "Step 6: Deploying to Kubernetes namespaces..."
 kubectl apply -f kubernetes/namespaces.yaml
-kubectl apply -f kubernetes/deployment.yaml -n dev
-kubectl apply -f kubernetes/deployment.yaml -n uat
-kubectl apply -f kubernetes/deployment.yaml -n prod
+kubectl apply -f kubernetes/deployment.yaml -n fides-dev
+kubectl apply -f kubernetes/deployment.yaml -n fides-uat
+kubectl apply -f kubernetes/deployment.yaml -n fides-prod
 
 echo "Step 6.5: Restarting deployments to pull new image..."
-kubectl rollout restart deployment/fides-testing-service -n dev
-kubectl rollout restart deployment/fides-testing-service -n uat
-kubectl rollout restart deployment/fides-testing-service -n prod
+kubectl rollout restart deployment/fides-testing-service -n fides-dev
+kubectl rollout restart deployment/fides-testing-service -n fides-uat
+kubectl rollout restart deployment/fides-testing-service -n fides-prod
 
 echo "Waiting for rollout to complete..."
-kubectl rollout status deployment/fides-testing-service -n dev --timeout=60s
-kubectl rollout status deployment/fides-testing-service -n uat --timeout=60s
-kubectl rollout status deployment/fides-testing-service -n prod --timeout=60s
+kubectl rollout status deployment/fides-testing-service -n fides-dev --timeout=60s
+kubectl rollout status deployment/fides-testing-service -n fides-uat --timeout=60s
+kubectl rollout status deployment/fides-testing-service -n fides-prod --timeout=60s
 
 # 9. Update Runtime State snapshot
 echo "Step 7: Capturing environment runtime snapshot..."
-$CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0d1
-$CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0a1
-$CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0e1
+$CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0d1 --namespace fides-dev
+$CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0a1 --namespace fides-uat
+$CLI snapshot k8s --env 9f3c7ea1-420a-4288-ae31-716d1ba1f0e1 --namespace fides-prod
 
 # Clean up temp files
-rm -f junit-summary.json scan-summary.json secret-summary.json
+rm -f junit-summary.json scan-summary.json secret-summary.json sbom-summary.json
 
 echo "=========================================="
 echo "🎉 Compliance Assert and Deploy succeeded!"
