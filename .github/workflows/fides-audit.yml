@@ -3,6 +3,7 @@ name: Fides Compliance & Deployment
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 env:
   FIDES_SERVER_URL: "https://fides.13.134.88.9.nip.io"
@@ -34,6 +35,12 @@ jobs:
           for fw in SOC2 ISO27001 NIST-800-53 PCI-DSS DORA PSD2 SOX; do
             fides control import --framework "$fw" || true
           done
+
+      # Enforce every control across every environment so the portal's Controls
+      # coverage reflects the full control set (creates an enabled environment
+      # policy per control requiring its evidence types). Idempotent.
+      - name: Enforce controls in all environments
+        run: fides control enforce --all-controls --all-environments || true
 
       - name: Start Trail Run
         run: |
@@ -91,7 +98,8 @@ jobs:
       # (segregation of duties — a CI machine token cannot self-approve), which
       # flips the gate to "approve".
       - name: Change gate (evidence + risk)
-        run: fides change-gate --trail ${{ github.sha }} || echo "::warning:: change gate on HOLD — a human must approve in the portal (SoD)"
+        run: |
+          fides change-gate --trail ${{ github.sha }} || echo "::warning:: change gate on HOLD — a human must approve in the portal (SoD)"
 
       - name: Approve artifact for the environment
         run: |
