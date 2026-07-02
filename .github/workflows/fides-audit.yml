@@ -8,7 +8,6 @@ on:
 env:
   FIDES_SERVER_URL: "https://fides.13.134.88.9.nip.io"
   FIDES_API_TOKEN: ${{ secrets.FIDES_API_TOKEN }}
-  FIDES_ENCRYPTION_KEY: ${{ secrets.FIDES_ENCRYPTION_KEY }}
   ORG_ID: "5d57b8c7-4328-4e1b-93df-4161b9a918a3"
   FLOW_ID: "f83b3e8c-8dc7-4a0b-ae95-716d1ba1f122"
   ENV_ID: "9f3c7ea1-420a-4288-ae31-716d1ba1f0e1"
@@ -85,7 +84,7 @@ jobs:
           $T junit --type junit
           $T trivy --type trivy
           $T snyk  --type snyk
-          $T sbom  --type sbom-cyclonedx --encrypt
+          $T sbom  --type sbom-cyclonedx
           $T gitleaks --type secret-scan
           # change mgmt / IaC / SAST (NIST, PCI, ISO, DORA, PSD2, SOX)
           $T deploy --type deployment
