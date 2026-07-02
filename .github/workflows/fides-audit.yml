@@ -42,11 +42,24 @@ jobs:
       - name: Enforce controls in all environments
         run: fides control enforce --all-controls --all-environments || true
 
+      # `trail start --trail <name>` creates a trail and the server returns its
+      # UUID. Capture that UUID into TRAIL_ID; downstream steps reference the trail
+      # by UUID (the git SHA is only the human-readable name). Commit message is
+      # passed via env to avoid script injection.
       - name: Start Trail Run
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          fides trail start --flow $FLOW_ID --trail ${{ github.sha }} \
+          OUT=$(fides trail start --flow "$FLOW_ID" --trail "${{ github.sha }}" \
             --repository "${{ github.repository }}" --commit "${{ github.sha }}" \
-            --branch "${{ github.ref_name }}" --message "${{ github.event.head_commit.message }}"
+            --branch "${{ github.ref_name }}" --message "${COMMIT_MSG:-manual dispatch}")
+          echo "$OUT"
+          TRAIL_ID=$(printf '%s' "$OUT" | sed -n 's/.*Successfully initialized trail: //p' | jq -r '.id')
+          if [ -z "$TRAIL_ID" ] || [ "$TRAIL_ID" = "null" ]; then
+            echo "::error:: could not parse trail id from: $OUT"; exit 1
+          fi
+          echo "Trail UUID: $TRAIL_ID"
+          echo "TRAIL_ID=$TRAIL_ID" >> "$GITHUB_ENV"
 
       - name: Build Docker Container
         run: |
@@ -55,7 +68,7 @@ jobs:
           echo "IMAGE_DIGEST=${DIGEST#sha256:}" >> $GITHUB_ENV
 
       - name: Register Artifact
-        run: fides artifact report --org $ORG_ID --trail ${{ github.sha }} --sha256 $IMAGE_DIGEST --name "fides-testing-service" --type docker
+        run: fides artifact report --org $ORG_ID --trail "$TRAIL_ID" --sha256 $IMAGE_DIGEST --name "fides-testing-service" --type docker
 
       # --- Evidence for EVERY control type across all frameworks + SARC controls.
       # Each attestation type is checked by its jq rule in Fides (e.g. .compliant
@@ -67,7 +80,7 @@ jobs:
         run: |
           # a payload that satisfies every type's compliance rule
           echo '{"compliant":true,"failures":0,"errors":0,"leaks":0,"vulnerabilities":{"critical":0}}' > ok.json
-          T="fides attest --trail ${{ github.sha }} --artifact-sha $IMAGE_DIGEST --payload ok.json --name"
+          T="fides attest --trail $TRAIL_ID --artifact-sha $IMAGE_DIGEST --payload ok.json --name"
           # tests + vuln + SBOM + secrets (SOC2, ISO, NIST, PCI, DORA, PSD2, SOX)
           $T junit --type junit
           $T trivy --type trivy
@@ -89,7 +102,7 @@ jobs:
 
       # --- Gates ---
       - name: Verify tamper-evidence chain
-        run: fides verify-chain --trail ${{ github.sha }}
+        run: fides verify-chain --trail "$TRAIL_ID"
 
       - name: Policy gate
         run: fides assert --sha256 $IMAGE_DIGEST --policy "production-release-rules"
@@ -99,7 +112,7 @@ jobs:
       # flips the gate to "approve".
       - name: Change gate (evidence + risk)
         run: |
-          fides change-gate --trail ${{ github.sha }} || echo "::warning:: change gate on HOLD — a human must approve in the portal (SoD)"
+          fides change-gate --trail "$TRAIL_ID" || echo "::warning:: change gate on HOLD — a human must approve in the portal (SoD)"
 
       - name: Approve artifact for the environment
         run: |
@@ -128,7 +141,7 @@ jobs:
           fides metrics deployment-frequency --weeks 8 || true
 
       - name: Download audit package
-        run: fides audit --trail ${{ github.sha }} --output trail-audit.zip
+        run: fides audit --trail "$TRAIL_ID" --output trail-audit.zip
 
       - name: Upload audit package
         uses: actions/upload-artifact@v4
